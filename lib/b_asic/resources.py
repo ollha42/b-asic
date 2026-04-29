@@ -2358,25 +2358,29 @@ class ProcessCollection:
                 total_ports=total_ports,
             )
 
-    def get_by_type_name(self, type_name: TypeName) -> "ProcessCollection":
+    def get_by_type_name(
+        self, type_name: TypeName | Iterable[TypeName]
+    ) -> "ProcessCollection":
         """
         Return a new ProcessCollection with only a given type of operation.
 
         Parameters
         ----------
-        type_name : TypeName
-            The TypeName of the operation to extract.
+        type_name : TypeName or iterable of TypeName
+            The TypeName(s) of the operation to extract.
 
         Returns
         -------
         A new :class:`~b_asic.resources.ProcessCollection`.
         """
+        type_names = {type_name} if isinstance(type_name, str) else set(type_name)
+
         return ProcessCollection(
             {
                 process
                 for process in self._collection
                 if isinstance(process, OperatorProcess)
-                and process.operation.type_name() == type_name
+                and process.operation.type_name() in type_names
             },
             self._schedule_time,
             self._cyclic,

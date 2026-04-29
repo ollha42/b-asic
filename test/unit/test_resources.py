@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import matplotlib.testing.decorators
 import pytest
 
-from b_asic.core_operations import ConstantMultiplication
+from b_asic.core_operations import Addition, ConstantMultiplication
 from b_asic.process import PlainMemoryVariable
 from b_asic.research.interleaver import (
     generate_matrix_transposer,
@@ -231,6 +231,13 @@ class TestProcessCollectionPlainMemoryVariable:
         assert all(
             isinstance(operand.operation, ConstantMultiplication)
             for operand in pc_cmul.collection
+        )
+
+        pc_add_cmul = pc.get_by_type_name(["add", "cmul"])
+        assert len(pc_add_cmul) == 11
+        assert all(
+            isinstance(operand.operation, (Addition, ConstantMultiplication))
+            for operand in pc_add_cmul.collection
         )
 
     def test_show(self, simple_collection: ProcessCollection):
