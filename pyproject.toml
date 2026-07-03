@@ -88,6 +88,9 @@ where = ["lib"]
 build-backend = 'mesonpy'
 requires = ['meson-python>=0.16', 'setuptools_scm>=8.1']
 
+[dependency-groups]
+dev = ["ipykernel>=7.3.0"]
+
 [tool.meson-python.args]
 install = ['--skip-subprojects']
 
