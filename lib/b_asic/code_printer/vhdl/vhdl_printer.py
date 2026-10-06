@@ -7,8 +7,10 @@ import warnings
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import apytypes as apy
+
 from b_asic.code_printer.printer import CODE, WLS, Printer
-from b_asic.code_printer.util import bin_str
+from b_asic.code_printer.util import bin_str, time_bin_str
 from b_asic.code_printer.vhdl import (
     common,
     memory_storage,
@@ -1370,6 +1372,50 @@ class VhdlPrinter(Printer):
             common.write(code, 1, "p_0_out <= res_overflow_0;")
         return [self._dt.wl], (declarations.getvalue(), code.getvalue())
 
+    def print_Constant_floating_point_real(
+        self, pe: "ProcessingElement"
+    ) -> tuple[WLS, CODE]:
+        declarations, code = io.StringIO(), io.StringIO()
+        common.signal_declaration(declarations, "res_arith_0", self._dt.type_str)
+
+        def fp_literal(value: float | int) -> str:
+            fp_val = apy.fp(
+                float(value), exp_bits=self.exp_bits, man_bits=self.man_bits
+            )
+            bit_pat = fp_val.to_bits()
+            slv_val = f'b"{bin_str(bit_pat, self.bits)}"'
+            if self._vhdl_2008:
+                return f"to_float({slv_val}, res_arith_0'high, -res_arith_0'low)"
+            return slv_val
+
+        values_by_time = {
+            proc.start_time: proc.operation.value.real
+            if isinstance(proc.operation.value, complex)
+            else proc.operation.value
+            for proc in pe.processes
+        }
+        sorted_values = sorted(values_by_time.items())
+
+        if len(set(values_by_time.values())) == 1:
+            common.write(code, 1, f"res_arith_0 <= {fp_literal(sorted_values[0][1])};")
+        else:
+            common.write(code, 1, "with schedule_cnt select")
+            common.write(code, 2, "res_arith_0 <=")
+            for time, value in sorted_values:
+                common.write(
+                    code,
+                    3,
+                    f'{fp_literal(value)} when "{time_bin_str(time, pe.schedule_time)}",',
+                )
+            common.write(
+                code,
+                3,
+                f"{fp_literal(sorted_values[0][1])} when others;",
+                end="\n\n",
+            )
+
+        return [self._dt.wl], (declarations.getvalue(), code.getvalue())
+
     def print_Addition_floating_point_real(
         self, pe: "ProcessingElement"
     ) -> tuple[WLS, CODE]:
@@ -1435,6 +1481,39 @@ class VhdlPrinter(Printer):
             code,
             1,
             f"res_arith_0 <= (not op_0({self.bits - 1})) & op_0({self.bits - 2} downto 0);",
+        )
+        return [self._dt.wl], (declarations.getvalue(), code.getvalue())
+
+    def print_SquareRoot_floating_point_real(
+        self, pe: "ProcessingElement"
+    ) -> tuple[WLS, CODE]:
+        if self._fp_backend != "amd":
+            return self.print_default()
+        return self._amd_fp_backend(
+            "u_fp_sqrt", component_name="fp_sqrt", two_inputs=False
+        )
+
+    def print_Absolute_floating_point_real(
+        self, pe: "ProcessingElement"
+    ) -> tuple[WLS, CODE]:
+        declarations, code = io.StringIO(), io.StringIO()
+        common.signal_declaration(declarations, "res_arith_0", self._slv_type_str)
+        common.write(
+            code,
+            1,
+            f"res_arith_0 <= '0' & op_0({self.bits - 2} downto 0);",
+        )
+        return [self._dt.wl], (declarations.getvalue(), code.getvalue())
+
+    def print_Sign_floating_point_real(
+        self, pe: "ProcessingElement"
+    ) -> tuple[WLS, CODE]:
+        declarations, code = io.StringIO(), io.StringIO()
+        common.signal_declaration(declarations, "res_arith_0", self._slv_type_str)
+        common.write(
+            code,
+            1,
+            f"res_arith_0 <= op_0({self.bits - 1}) & '0' & ({self.exp_bits - 2} downto 0 => '1') & ({self.man_bits - 1} downto 0 => '0');",
         )
         return [self._dt.wl], (declarations.getvalue(), code.getvalue())
 

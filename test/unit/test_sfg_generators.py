@@ -20,12 +20,14 @@ from b_asic.sfg_generators import (
     ldlt_matrix_inverse,
     matrix_multiplication,
     radix_2_dif_fft,
+    svd_one_sided_jacobi,
     tile_ldlt_matrix_inverse,
     wdf_allpass,
 )
 from b_asic.signal_generator import Constant, Impulse, ZeroPad
 from b_asic.simulation import Simulation
 from b_asic.special_operations import Delay
+from b_asic.svd_operations import Sign
 from b_asic.wdf_operations import SymmetricTwoportAdaptor
 
 
@@ -1574,3 +1576,56 @@ class TestLatticeWDF:
     def test_invalid_empty(self):
         with pytest.raises(ValueError, match="cannot be empty"):
             lattice_wdf([])
+
+
+class TestSvdOneSidedJacobi:
+    def test_m_less_than_n_raises(self):
+        with pytest.raises(ValueError):
+            svd_one_sided_jacobi(m=2, n=3)
+
+    def test_shapes(self):
+        m, n = 4, 3
+        sfg = svd_one_sided_jacobi(m=m, n=n, n_sweeps=1)
+
+        assert len(sfg.inputs) == m * n
+        assert len(sfg.outputs) == m * n + n + n * n
+
+    def test_allowed_operations(self):
+        sfg = svd_one_sided_jacobi(m=3, n=2, n_sweeps=1)
+
+        allowed = {"in", "out", "c", "addsub", "mul", "rec", "sqrt", "abs", "sign"}
+        assert set(sfg.operation_counter()) <= allowed
+        assert len(sfg.find_by_type_name(Sign.type_name())) == 1
+
+    @pytest.mark.parametrize(
+        ("m", "n", "seed", "n_sweeps"),
+        [
+            (3, 2, 0, 1),
+            (4, 3, 1, 2),
+            (3, 3, 2, 2),
+        ],
+    )
+    def test_reconstruction_and_singular_values(self, m, n, seed, n_sweeps):
+        A = np.random.default_rng(seed).standard_normal((m, n))
+
+        sfg = svd_one_sided_jacobi(m=m, n=n, n_sweeps=n_sweeps)
+        inputs = [Constant(A[i, j]) for i in range(m) for j in range(n)]
+
+        sim = Simulation(sfg, inputs)
+        sim.run_for(1)
+        res = sim.results
+
+        def out(i):
+            return np.real(np.asarray(res[f"out{i}"]).flatten()[0])
+
+        U = np.array([[out(i * n + j) for j in range(n)] for i in range(m)])
+        s = np.array([out(m * n + j) for j in range(n)])
+        # Outputs store V[i, j] at flat position i * n + j; transpose to get Vt.
+        V = np.array([[out(m * n + n + i * n + j) for j in range(n)] for i in range(n)])
+        Vt = V.T
+
+        A_recon = U @ np.diag(s) @ Vt
+        assert np.allclose(A_recon, A, atol=1e-10)
+
+        ref_s = np.sort(np.linalg.svd(A, compute_uv=False))[::-1]
+        assert np.allclose(np.sort(s)[::-1], ref_s, atol=1e-6)

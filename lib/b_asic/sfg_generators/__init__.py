@@ -15,6 +15,7 @@ from .matrix_inversion import (
     tile_ldlt_matrix_inverse,
 )
 from .matrix_operations import matrix_multiplication
+from .svd import svd_one_sided_jacobi
 from .wave_digital_filters import lattice_wdf, wdf_allpass
 
 __all__ = [
@@ -29,6 +30,7 @@ __all__ = [
     "ldlt_matrix_inverse",
     "matrix_multiplication",
     "radix_2_dif_fft",
+    "svd_one_sided_jacobi",
     "tile_ldlt_matrix_inverse",
     "wdf_allpass",
 ]
